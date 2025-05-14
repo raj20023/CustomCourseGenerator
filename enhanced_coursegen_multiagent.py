@@ -382,7 +382,7 @@ def json_maker_bot(json_text):
     
     model_response = model.invoke(formatted_prompt)
 
-    return model_response.content
+    return model_response.content.replace("```json", "").replace("```", "")
 
 
 # Helper functions
@@ -600,6 +600,10 @@ def content_creator(state: State, team_num: int, module_num: int) -> State:
             raise ValueError(f"Missing output from {team_key}")
         
         team_output = team_outputs[team_key]
+        team_properties = team_output.get("properties", None)
+        if team_properties:
+            team_output = team_properties
+        print(team_output)
         module_title = team_output.get(f"module_{module_num}")
         module_description = team_output.get(f"description_{module_num}")
         learning_objectives = team_output.get(f"learning_objectives_{module_num}", [])
@@ -630,17 +634,8 @@ def content_creator(state: State, team_num: int, module_num: int) -> State:
         print(f"Content creation has ended for team {team_num}")
         return {
             "messages": state["messages"] + [{"role": "assistant", "content": f"Created detailed content for module: {module_title}."}],
-            "course_topic": course_topic,
-            "difficulty_level": difficulty_level,
-            "target_audience": target_audience,
-            "learning_goals": state["learning_goals"],
-            "manager_output": state["manager_output"],
             f"team_output_{team_num}": team_outputs,
             "module_content": module_content,
-            "assessment_content": state["assessment_content"],
-            "resources_content": state["resources_content"],
-            "feedback": state["feedback"],
-            "course_metadata": state["course_metadata"]
         }
     except Exception as e:
         raise
@@ -658,13 +653,16 @@ def assessment_creator(state: State, team_num: int, module_num: int) -> State:
         course_topic = state["course_topic"]
         difficulty_level = state["difficulty_level"]
         target_audience = state["target_audience"]
-        team_outputs = state[f"team_outputs_{team_num}"]
+        team_outputs = state[f"team_output_{team_num}"]
         
         team_key = f"team{team_num}"
         if team_key not in team_outputs:
             raise ValueError(f"Missing output from {team_key}")
         
         team_output = team_outputs[team_key]
+        team_properties = team_output.get("properties", None)
+        if team_properties:
+            team_output = team_properties
         module_title = team_output.get(f"module_{module_num}")
         module_description = team_output.get(f"description_{module_num}")
         learning_objectives = team_output.get(f"learning_objectives_{module_num}", [])
@@ -731,6 +729,9 @@ def resources_creator(state: State, team_num: int, module_num: int) -> State:
             raise ValueError(f"Missing output from {team_key}")
         
         team_output = team_outputs[team_key]
+        team_properties = team_output.get("properties", None)
+        if team_properties:
+            team_output = team_properties
         module_title = team_output.get(f"module_{module_num}")
         module_description = team_output.get(f"description_{module_num}")
         learning_objectives = team_output.get(f"learning_objectives_{module_num}", [])
@@ -761,7 +762,6 @@ def resources_creator(state: State, team_num: int, module_num: int) -> State:
         print("Resources creator has ended!")
         return {
             "messages": state["messages"] + [{"role": "assistant", "content": f"Created resources for module: {module_title}."}],
-            "course_topic": course_topic,
             "difficulty_level": difficulty_level,
             "target_audience": target_audience,
             "learning_goals": state["learning_goals"],
