@@ -25,7 +25,8 @@ class State(TypedDict):
     team_output_2: str
     team_output_3: str
     team_output_4: str
-    module_content: Annotated[Dict[str, Any], LastValue]
+    team1_module1: str
+    team2_module1: str
     assessment_content: Annotated[Dict[str, Any], LastValue]
     resources_content: Annotated[Dict[str, Any], LastValue]
     feedback: Annotated[Dict[str, Any], LastValue]
@@ -373,6 +374,7 @@ def json_maker_bot(json_text):
     Strict Instructions:
     - return only corrected json format only.
     - don't give any other text then corrected json response.
+    - *json needs to be 100 percent correct in the output.*
     """
     json_formator_prompt = ChatPromptTemplate.from_template(json_formator_template)
 
@@ -462,6 +464,8 @@ def initialize_state(state: State) -> State:
             "team_output_2": {},
             "team_output_3": {},
             "team_output_4": {},
+            "team1_module1": {},
+            "team2_module1": {},
             "module_content": {},
             "assessment_content": {},
             "resources_content": {},
@@ -518,7 +522,8 @@ def course_manager(state: State) -> State:
             "team_output_2": state["team_output_2"],
             "team_output_3": state["team_output_3"],
             "team_output_4": state["team_output_4"],
-            "module_content": state["module_content"],
+            "team1_module1": state["team1_module1"],
+            "team2_module1": state["team2_module1"],
             "assessment_content": state["assessment_content"],
             "resources_content": state["resources_content"],
             "feedback": state["feedback"],
@@ -603,7 +608,6 @@ def content_creator(state: State, team_num: int, module_num: int) -> State:
         team_properties = team_output.get("properties", None)
         if team_properties:
             team_output = team_properties
-        print(team_output)
         module_title = team_output.get(f"module_{module_num}")
         module_description = team_output.get(f"description_{module_num}")
         learning_objectives = team_output.get(f"learning_objectives_{module_num}", [])
@@ -628,14 +632,14 @@ def content_creator(state: State, team_num: int, module_num: int) -> State:
         content_output = parse_json(model_response.content)
         
         # Update content outputs in state
-        module_content = state["module_content"].copy()
+        # module_content = state["module_content"].copy()
         content_key = f"{team_key}_module{module_num}"
-        module_content[content_key] = content_output
+        # module_content[content_key] = content_output
         print(f"Content creation has ended for team {team_num}")
         return {
             "messages": state["messages"] + [{"role": "assistant", "content": f"Created detailed content for module: {module_title}."}],
             f"team_output_{team_num}": team_outputs,
-            "module_content": module_content,
+            content_key: content_output,
         }
     except Exception as e:
         raise
@@ -694,17 +698,8 @@ def assessment_creator(state: State, team_num: int, module_num: int) -> State:
         
         return {
             "messages": state["messages"] + [{"role": "assistant", "content": f"Created assessments for module: {module_title}."}],
-            "course_topic": course_topic,
-            "difficulty_level": difficulty_level,
-            "target_audience": target_audience,
-            "learning_goals": state["learning_goals"],
-            "manager_output": state["manager_output"],
             f"team_output_{team_num}": team_outputs,
-            "module_content": state["module_content"],
             "assessment_content": assessment_content,
-            "resources_content": state["resources_content"],
-            "feedback": state["feedback"],
-            "course_metadata": state["course_metadata"]
         }
     except Exception as e:
         raise
@@ -735,7 +730,6 @@ def resources_creator(state: State, team_num: int, module_num: int) -> State:
         module_title = team_output.get(f"module_{module_num}")
         module_description = team_output.get(f"description_{module_num}")
         learning_objectives = team_output.get(f"learning_objectives_{module_num}", [])
-        
         if not module_title or not module_description:
             raise ValueError(f"Missing module information for {team_key}, module {module_num}")
         
@@ -762,16 +756,7 @@ def resources_creator(state: State, team_num: int, module_num: int) -> State:
         print("Resources creator has ended!")
         return {
             "messages": state["messages"] + [{"role": "assistant", "content": f"Created resources for module: {module_title}."}],
-            "difficulty_level": difficulty_level,
-            "target_audience": target_audience,
-            "learning_goals": state["learning_goals"],
-            "manager_output": state["manager_output"],
-            f"team_output_{team_num}": team_outputs,
-            "module_content": state["module_content"],
-            "assessment_content": state["assessment_content"],
             "resources_content": resources_content,
-            "feedback": state["feedback"],
-            "course_metadata": state["course_metadata"]
         }
     except Exception as e:
         raise
@@ -785,16 +770,15 @@ def course_metadata_creator(state: State) -> State:
     """Create final course metadata integrating all components"""
     try:
         # Get all necessary information
+        print("Metadata creator has started...")
         course_topic = state["course_topic"]
         difficulty_level = state["difficulty_level"]
         target_audience = state["target_audience"]
         learning_goals = state["learning_goals"]
-        team_outputs = state["team_outputs"]
-        
-        # Ensure we have outputs from all teams
-        for i in range(1, 5):
-            if f"team{i}" not in team_outputs:
-                raise ValueError(f"Missing output from team {i}")
+        team_output_1 = state["team_output_1"]
+        team_output_2 = state["team_output_2"]
+        team_output_3 = state["team_output_3"]
+        team_output_4 = state["team_output_4"]
         
         # Generate the prompt for metadata creation
         formatted_prompt = metadata_prompt.format_messages(
@@ -802,10 +786,10 @@ def course_metadata_creator(state: State) -> State:
             difficulty_level=difficulty_level,
             target_audience=target_audience,
             learning_goals=learning_goals,
-            team1_modules=json.dumps(team_outputs["team1"], indent=2),
-            team2_modules=json.dumps(team_outputs["team2"], indent=2),
-            team3_modules=json.dumps(team_outputs["team3"], indent=2),
-            team4_modules=json.dumps(team_outputs["team4"], indent=2)
+            team1_modules=json.dumps(team_output_1),
+            team2_modules=json.dumps(team_output_2),
+            team3_modules=json.dumps(team_output_3),
+            team4_modules=json.dumps(team_output_4)
         )
         
         # Get the model response
@@ -813,6 +797,7 @@ def course_metadata_creator(state: State) -> State:
         
         # Parse the JSON response
         metadata_output = parse_json(model_response.content)
+        print("Metadata creator has ended!")
         
         return {
             "messages": state["messages"] + [{"role": "assistant", "content": f"Created complete course metadata for: {metadata_output.get('title', course_topic)}."}],
@@ -821,8 +806,12 @@ def course_metadata_creator(state: State) -> State:
             "target_audience": target_audience,
             "learning_goals": learning_goals,
             "manager_output": state["manager_output"],
-            "team_outputs": team_outputs,
-            "module_content": state["module_content"],
+            "team_output_1": team_output_1,
+            "team_output_2": team_output_2,
+            "team_output_3": team_output_3,
+            "team_output_4": team_output_4,
+            "team1_module1": state["team1_module1"],
+            "team2_module1": state["team2_module1"],
             "assessment_content": state["assessment_content"],
             "resources_content": state["resources_content"],
             "feedback": state["feedback"],
@@ -840,11 +829,12 @@ def quality_reviewer(state: State) -> State:
     """Review course quality and provide feedback"""
     try:
         # Get relevant information
+        print("QR started....")
         course_topic = state["course_topic"]
         course_metadata = state["course_metadata"]
-        
+        module_content = {"team1_module1": state["team1_module1"], "team2_module1": state["team2_module1"]}
         # Sample some content for review
-        content_sample = next(iter(state["module_content"].values())) if state["module_content"] else {}
+        content_sample = next(iter(module_content.values())) if module_content else {}
         assessment_sample = next(iter(state["assessment_content"].values())) if state["assessment_content"] else {}
         resources_sample = next(iter(state["resources_content"].values())) if state["resources_content"] else {}
         
@@ -864,10 +854,9 @@ def quality_reviewer(state: State) -> State:
         
         # Get the model response
         model_response = model.invoke(formatted_prompt)
-        
         # Parse the JSON response
         feedback_output = parse_json(model_response.content)
-        
+        print("QR Ends!")
         return {
             "messages": state["messages"] + [{"role": "assistant", "content": "Quality review completed with detailed feedback."}],
             "course_topic": course_topic,
@@ -875,8 +864,12 @@ def quality_reviewer(state: State) -> State:
             "target_audience": state["target_audience"],
             "learning_goals": state["learning_goals"],
             "manager_output": state["manager_output"],
-            "team_outputs": state["team_outputs"],
-            "module_content": state["module_content"],
+            "team_output_1": state["team_output_1"],
+            "team_output_2": state["team_output_2"],
+            "team_output_3": state["team_output_3"],
+            "team_output_4": state["team_output_4"],
+            "team1_module1": state["team1_module1"],
+            "team2_module1": state["team2_module1"],
             "assessment_content": state["assessment_content"],
             "resources_content": state["resources_content"],
             "feedback": feedback_output,
@@ -896,9 +889,10 @@ def course_generator_summary(state: State) -> State:
         # Get all necessary information
         course_metadata = state["course_metadata"]
         feedback = state["feedback"]
-        
+        team_outputs = {"team_output_1": state["team_output_1"], "team_output_2": state["team_output_2"], "team_output_3": state["team_output_3"], "team_output_4": state["team_output_1"]}
         # Count content items
-        content_count = len(state["module_content"])
+        module_content = {"team1_module1": state["team1_module1"], "team2_module1": state["team2_module1"]}
+        content_count = len(module_content)
         assessment_count = len(state["assessment_content"])
         resources_count = len(state["resources_content"])
         
@@ -957,8 +951,8 @@ To export this course, you can save the complete state data which contains all c
         
         course_data = {
             "metadata": course_metadata,
-            "modules": state["team_outputs"],
-            "content": state["module_content"],
+            "modules": team_outputs,
+            "content": module_content,
             "assessments": state["assessment_content"],
             "resources": state["resources_content"],
             "feedback": feedback
@@ -1068,26 +1062,70 @@ def build_course_generation_graph():
         team_outputs = state["team_outputs"]
         return all(f"team{i}" in team_outputs for i in range(1, 5))
     
+    def check_content_readiness(state: State) -> State:
+        """Check if all content is ready and direct workflow appropriately"""
+        team1_module1 = state.get("team1_module1", {})
+        team2_module1 = state.get("team2_module1", {})
+        assessment_content = state.get("assessment_content", {})
+        resources_content = state.get("resources_content", {})
+        
+        all_ready = (len(team1_module1) >= 1 and 
+                    len(team2_module1) >= 1 and
+                    len(assessment_content) >= 1 and 
+                    len(resources_content) >= 1)
+        
+        return {
+            "messages": state["messages"] + [{"role": "assistant", 
+                        "content": "All content samples are ready. Proceeding to metadata creation."
+                        if all_ready else "Still waiting for content samples to be ready."}],
+            "all_content_ready": all_ready
+        }
+
+    graph_builder.add_node("check_readiness", check_content_readiness)
+
+    # Connect all content creators to the readiness check
+    for creator in ["team1_module1_content", "team2_module1_content", 
+                    "team3_module1_assessment", "team4_module1_resources"]:
+        graph_builder.add_edge(creator, "check_readiness")
+
+    # Add conditional edge from readiness check to metadata creator
+    graph_builder.add_conditional_edges(
+        "check_readiness",
+        lambda state: state.get("all_content_ready", False),
+        {True: "metadata_creator", False: END}
+    )
+
     def content_samples_ready(state: State):
         """Check if we have at least one content sample from each type"""
-        module_content = state["module_content"]
+        team1_module1 = state["team1_module1"]
+        team2_module1 = state["team2_module1"]
         assessment_content = state["assessment_content"]
         resources_content = state["resources_content"]
+        print("======================================")
+        print(team1_module1)
+        print("======================================")
+        print(team2_module1)
+        print("======================================")
+        print(assessment_content)
+        print("======================================")
+        print(resources_content)
+        print("======================================")
         
-        return (len(module_content) >= 1 and 
+        return (len(team1_module1) >= 1 and 
+                len(team2_module1) >= 1 and
                 len(assessment_content) >= 1 and 
                 len(resources_content) >= 1)
     
     # Connect content creators to metadata creation when ready
-    for creator in [
-        "team1_module1_content", "team2_module1_content",
-        "team3_module1_assessment", "team4_module1_resources"
-    ]:
-        graph_builder.add_conditional_edges(
-            creator,
-            content_samples_ready,
-            {True: "metadata_creator", False: END}
-        )
+    # for creator in [
+    #     "team1_module1_content", "team2_module1_content",
+    #     "team3_module1_assessment", "team4_module1_resources"
+    # ]:
+    #     graph_builder.add_conditional_edges(
+    #         creator,
+    #         content_samples_ready,
+    #         {True: "metadata_creator", False: END}
+    #     )
     
     # Connect metadata creator to quality review
     graph_builder.add_edge("metadata_creator", "quality_review")
@@ -1159,10 +1197,15 @@ def generate_expert_course(course_topic, difficulty="Intermediate", target_audie
     print(f"Generating course on: {course_topic}...")
     final_state = graph.invoke(initial_state)
     print("Course generation complete!")
-    
+    team_outputs = {"team_output_1": final_state["team_output_1"], "team_output_2": final_state["team_output_2"], "team_output_3": final_state["team_output_3"], "team_output_4": final_state["team_output_1"]}
+    module_content = {"team1_module1": final_state["team1_module1"], "team2_module1": final_state["team2_module1"]}
+
     # Return the full course data
+    messages_list = []
+    for msg in final_state.get("messages", []):
+        messages_list.append(msg.content)
     return {
-        "conversation": final_state.get("messages", []),
+        "conversation": messages_list,
         "metadata": final_state.get("course_metadata", {}),
         "modules": final_state.get("team_outputs", {}),
         "content": final_state.get("module_content", {}),
@@ -1183,7 +1226,7 @@ def save_course_to_file(course_data, filename=None):
     
     os.makedirs("courses", exist_ok=True)
     filepath = os.path.join("courses", filename)
-    
+    print(course_data)
     with open(filepath, "w") as f:
         json.dump(course_data, f, indent=2)
     
