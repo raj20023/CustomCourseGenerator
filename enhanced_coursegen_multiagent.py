@@ -343,6 +343,7 @@ every key value of the json should be in the double quots only.
 # Set up all prompt templates with parsers
 manager_prompt = ChatPromptTemplate.from_template(manager_template)
 manager_prompt = manager_prompt.partial(format_instructions=manager_parser.get_format_instructions())
+print(manager_prompt)
 
 team_prompt = ChatPromptTemplate.from_template(team_template)
 team_prompt = team_prompt.partial(format_instructions=team_parser.get_format_instructions())
