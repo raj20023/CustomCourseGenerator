@@ -15,6 +15,7 @@ from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
 import asyncio
 from datetime import datetime
+from tavily import TavilyClient
 
 # Create folders for storing courses
 os.makedirs("courses", exist_ok=True)
@@ -109,22 +110,14 @@ def json_maker_bot(json_text):
             return {}
 
 async def perform_web_search(query, num_results=5):
-    """Perform web search using Serper API"""
-    url = "https://google.serper.dev/search"
-    headers = {
-        "X-API-Key": SERPER_API_KEY,
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "q": query,
-        "num": num_results
-    }
-    
+    """Perform web search using Serper API"""    
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, headers=headers, json=payload, timeout=30.0)
-            response.raise_for_status()
-            return response.json()
+        client = TavilyClient("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")
+        response = client.search(
+            query=query,
+            max_results=num_results
+        )
+        return response
     except Exception as e:
         st.error(f"Error during search: {str(e)}")
         return {"error": str(e), "results": []}
@@ -132,10 +125,12 @@ async def perform_web_search(query, num_results=5):
 async def fetch_webpage_content(url):
     """Fetch content from a webpage"""
     try:
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            response = await client.get(url, timeout=10.0)
-            response.raise_for_status()
-            return response.text
+        client = TavilyClient("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")
+        response = client.extract(
+            urls=[url],
+            extract_depth="advanced"
+        )
+        return response["results"]
     except Exception as e:
         st.warning(f"Error fetching {url}: {e}")
         return ""
@@ -166,23 +161,22 @@ async def web_search_enhancer(course_topic):
         
         # Perform web search
         search_results = await perform_web_search(search_query)
-        
         # Extract useful information from search results
         enhanced_content = {
             "search_query": search_query,
-            "results": search_results.get("organic", [])[:5],
+            "results": search_results.get("results", [])[:5],
             "extracted_insights": []
         }
         
         # Try to fetch content from top results
-        if "organic" in search_results:
+        if "results" in search_results:
             progress_bar = st.progress(0)
-            for i, result in enumerate(search_results["organic"][:3]):
-                if "link" in result:
-                    progress_bar.progress((i+1)/3)
+            for i, result in enumerate(search_results["results"][:5]):
+                if "url" in result:
+                    progress_bar.progress((i+1)/5)
                     st.write(f"Analyzing: {result.get('title', 'Source')}")
                     
-                    content = await fetch_webpage_content(result["link"])
+                    content = await fetch_webpage_content(result["url"])
                     # Extract insights from the content
                     insights_prompt = """
                     Extract 3-5 key educational insights from this content that would be valuable for 
