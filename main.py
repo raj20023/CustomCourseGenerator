@@ -4,14 +4,15 @@ import time
 import uuid
 import pandas as pd
 import os
-from typing import List, Dict, Any
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
-from pydantic import BaseModel, Field
 import asyncio
 from datetime import datetime
 from tavily import TavilyClient
+
+from services.parser_service import *
+from services.prompt_service import *
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -75,17 +76,7 @@ def json_maker_bot(json_text):
     """Fix malformed JSON using the model"""
     model = get_model()
     print("Json bot triggred...")
-    json_formator_template = """
-    You are an expert json issue resolver, you can make all json in proper format.
-
-    Here is the json which dosen't have proper format of the json, Please make it in proper json format.
-    {json_text}
-
-    Strict Instructions:
-    - return only corrected json format only.
-    - don't give any other text then corrected json response.
-    - *json needs to be 100 percent correct in the output.*
-    """
+    json_formator_template = JSON_FORMATOR_PROMPT
     json_formator_prompt = ChatPromptTemplate.from_template(json_formator_template)
     formatted_prompt = json_formator_prompt.format_messages(json_text=json_text)
     model_response = model.invoke(formatted_prompt)
@@ -174,15 +165,7 @@ async def web_search_enhancer(course_topic):
                     
                     content = await fetch_webpage_content(result["url"])
                     # Extract insights from the content
-                    insights_prompt = """
-                    Extract 3-5 key educational insights from this content that would be valuable for 
-                    creating a course on {topic}. Focus on teaching methodologies, important concepts,
-                    and best practices. Return the insights as a JSON array of strings.
-                    
-                    Content: {content}
-                    
-                    Strictly Return ONLY a JSON array like ["insight 1", "insight 2", "insight 3"]
-                    """
+                    insights_prompt = INSIGHT_PROMPT
                     
                     # Truncate content if too long
                     truncated_content = content[:10000] if content else "No content available"
@@ -214,31 +197,7 @@ def enhanced_course_manager(course_topic, difficulty_level, target_audience, lea
     model = get_model()
     
     # Enhanced manager template that includes search insights
-    manager_template = """
-    You are an expert course designer team manager with a PhD in instructional design and curriculum development.
-
-    User requested a course on: {course_topic}
-    Difficulty level: {difficulty_level}
-    Target audience: {target_audience}
-    Learning goals: {learning_goals}
-
-    {insights_section}
-
-    You are managing 4 specialized teams to create a comprehensive, expert-level course:
-
-    1. Curriculum Planning Team: Responsible for overall structure, learning objectives, module sequencing
-    2. Content Development Team: Responsible for developing main educational content, explanations, and core concepts
-    3. Assessment Team: Responsible for exercises, quizzes, practice materials, and projects
-    4. Resources Team: Responsible for supplementary materials, references, advanced topics, and glossaries
-
-    Divide the course creation tasks among these teams in a way that ensures a cohesive, high-quality learning experience.
-    Be specific about what each team should focus on for this particular course topic.
-
-    Please create the tasks in a JSON format with the following structure:
-    {format_instructions}
-
-    Return ONLY the JSON without any additional text or explanation.
-    """
+    manager_template = MANAGER_PROMPT
     
     # Add insights section if available
     insights_section = ""
@@ -267,154 +226,11 @@ def enhanced_course_manager(course_topic, difficulty_level, target_audience, lea
         
         return manager_output
 
-class Task(BaseModel):
-    module_1: str = Field(description="Module Title")
-    description_1: str = Field(description="Module description")
-    learning_objectives_1: str = Field(description='["objective 1", "objective 2", "objective 3"]')
-    module_2: str = Field(description="Module Title")
-    description_2: str = Field(description="Module description")
-    learning_objectives_2: str = Field(description='["objective 1", "objective 2", "objective 3"]')
-    module_3: str = Field(description="Module Title")
-    description_3: str = Field(description="Module description")
-    learning_objectives_3: str = Field(description='["objective 1", "objective 2", "objective 3"]')
-
-class Section(BaseModel):
-    title: str = Field(description="Title of the section")
-    content: str = Field(description="Detailed content of the section (min 300-500 words per section)")
-    subsections: List[Dict[str, str]] = Field(description="List of 2-4 subsections with titles and content (200+ words each)")
-
-class Example(BaseModel):
-    title: str = Field(description="Title of the example")
-    scenario: str = Field(description="Background and context for the example")
-    content: str = Field(description="Detailed step-by-step walkthrough with explanations (300+ words)")
-    key_takeaways: List[str] = Field(description="List of key takeaways from this example")
-
-class ModuleContent(BaseModel):
-    title: str = Field(description="Module title")
-    introduction: str = Field(description="Comprehensive introduction (300+ words)")
-    sections: List[Section] = Field(description="List of 4-7 detailed sections with subsections")
-    key_concepts: List[str] = Field(description="List of 8-12 key concepts covered in the module")
-    examples: List[Example] = Field(description="List of 3-5 detailed examples with scenarios and takeaways")
-    practice_activities: List[Dict[str, str]] = Field(description="List of 3-5 practice activities with instructions")
-    summary: str = Field(description="Comprehensive summary (250+ words)")
-    further_reading: List[Dict[str, str]] = Field(description="List of suggested resources for deeper learning")
-
-class DetailedQuizQuestion(BaseModel):
-    question: str = Field(description="Detailed question text (at least 50 words)")
-    context: str = Field(description="Background information and context for the question (100+ words)")
-    options: List[str] = Field(description="Detailed multiple choice options (each 20+ words)")
-    correct_answer: str = Field(description="The correct option")
-    explanation: str = Field(description="Detailed explanation of why this answer is correct (150+ words)")
-
-class DetailedPracticeProblem(BaseModel):
-    problem: str = Field(description="Comprehensive problem description (200+ words)")
-    context: str = Field(description="Background and real-world context (100+ words)")
-    solution: str = Field(description="Step-by-step detailed solution with explanations (300+ words)")
-    hints: List[str] = Field(description="Progressive hints to help students solve the problem")
-    learning_points: List[str] = Field(description="Key learning points from this problem")
-
-class DetailedProjectIdea(BaseModel):
-    title: str = Field(description="Project title")
-    description: str = Field(description="Comprehensive project description (300+ words)")
-    learning_goals: List[str] = Field(description="Specific learning goals this project addresses")
-    steps: List[Dict[str, str]] = Field(description="Detailed step-by-step implementation guide")
-    resources_needed: List[str] = Field(description="Resources needed to complete the project")
-    evaluation_criteria: List[str] = Field(description="Criteria for evaluating project success")
-    extensions: List[str] = Field(description="Ways to extend or enhance the project")
-
-class DetailedModuleAssessment(BaseModel):
-    module_title: str = Field(description="Module title")
-    quiz_questions: List[DetailedQuizQuestion] = Field(description="List of 8-12 detailed quiz questions with explanations")
-    practice_problems: List[DetailedPracticeProblem] = Field(description="List of 4-6 comprehensive practice problems")
-    project_ideas: List[DetailedProjectIdea] = Field(description="List of 3-5 detailed project proposals")
-    self_assessment: List[Dict[str, str]] = Field(description="List of reflection questions with guidelines")
-    grading_rubrics: List[Dict[str, Any]] = Field(description="Detailed grading rubrics for assignments")
-
-class DetailedReading(BaseModel):
-    title: str = Field(description="Reading title")
-    author: str = Field(description="Author name(s)")
-    description: str = Field(description="Detailed description of the reading (150+ words)")
-    key_topics: List[str] = Field(description="Key topics covered in this reading")
-    relevance: str = Field(description="Explanation of relevance to the module (100+ words)")
-    difficulty: str = Field(description="Reading difficulty and estimated time commitment")
-    discussion_questions: List[str] = Field(description="Questions to consider while reading")
-
-class DetailedAdvancedTopic(BaseModel):
-    title: str = Field(description="Topic title")
-    description: str = Field(description="Comprehensive description of the topic (250+ words)")
-    prerequisites: List[str] = Field(description="Knowledge prerequisites for understanding this topic")
-    learning_pathway: str = Field(description="Suggested approach to learning this topic (150+ words)")
-    resources: List[Dict[str, str]] = Field(description="Specific resources for learning this topic")
-    applications: List[str] = Field(description="Real-world applications of this topic")
-
-class DetailedToolResource(BaseModel):
-    name: str = Field(description="Tool name")
-    type: str = Field(description="Type of tool (software, framework, methodology, etc.)")
-    description: str = Field(description="Detailed description of the tool (200+ words)")
-    use_cases: List[str] = Field(description="Specific use cases relevant to the module")
-    getting_started: str = Field(description="Detailed guide for getting started (150+ words)")
-    alternatives: List[Dict[str, str]] = Field(description="Alternative tools with comparisons")
-
-class DetailedGlossaryItem(BaseModel):
-    term: str = Field(description="Term")
-    definition: str = Field(description="Comprehensive definition (50+ words)")
-    context: str = Field(description="Usage context and importance (75+ words)")
-    examples: List[str] = Field(description="Examples of the term in use")
-    related_terms: List[str] = Field(description="Related terms to explore")
-
-class DetailedCaseStudy(BaseModel):
-    title: str = Field(description="Case study title")
-    scenario: str = Field(description="Detailed real-world scenario (300+ words)")
-    analysis: str = Field(description="In-depth analysis of the case (400+ words)")
-    lessons: List[str] = Field(description="Key lessons from this case study")
-    questions: List[str] = Field(description="Discussion questions based on this case")
-
-class DetailedModuleResources(BaseModel):
-    module_title: str = Field(description="Module title")
-    recommended_readings: List[DetailedReading] = Field(description="List of 5-8 detailed reading recommendations")
-    advanced_topics: List[DetailedAdvancedTopic] = Field(description="List of 4-6 advanced topics with learning pathways")
-    tools_and_resources: List[DetailedToolResource] = Field(description="List of 4-6 detailed tool/resource descriptions")
-    glossary: List[DetailedGlossaryItem] = Field(description="List of 10-15 detailed glossary items")
-    case_studies: List[DetailedCaseStudy] = Field(description="List of 2-4 detailed case studies")
-    cheat_sheets: List[Dict[str, Any]] = Field(description="Quick reference materials for key concepts")
-
-class Module(BaseModel):
-    title: str = Field(description="Module title")
-    description: str = Field(description="Module description")
-
-class CourseMetadata(BaseModel):
-    title: str = Field(description="Course title")
-    description: str = Field(description="Comprehensive course description")
-    target_audience: str = Field(description="Description of the intended audience")
-    prerequisites: List[str] = Field(description="List of prerequisites for the course")
-    learning_outcomes: List[str] = Field(description="List of learning outcomes")
-    modules: List[Module] = Field(description="List of modules with titles and descriptions")
-    estimated_duration: str = Field(description="Estimated completion time")
-    difficulty_level: str = Field(description="Course difficulty")
-    instructional_approach: str = Field(description="Description of teaching approach")
-    authors_note: str = Field(description="Note from the course creators")
-
 async def generate_team_output(team_num, specialty, course_topic, difficulty_level, target_audience, learning_goals):
     """Generate team leader output"""
     print(f"Team {team_num} started...")
     model = get_model()
-    team_template = """
-    You are an expert course content developer specializing in {specialty} with years of experience creating professional educational content.
-
-    Here is the task:
-    - Create a course on: {course_topic}
-    - Difficulty level: {difficulty_level}
-    - Target audience: {target_audience}
-    - Learning goals: {learning_goals}
-
-    Your job is to propose three comprehensive, well-structured modules that fulfill your team's assignment for this course.
-    Each module should have a clear title, concise description, and specific learning objectives.
-
-    Return a JSON object with this structure:
-    {format_instructions}
-    
-    Return ONLY the JSON without any additional text.
-    """
+    team_template = TEAM_PROMPT
     parser = JsonOutputParser(pydantic_object=Task)
     prompt = ChatPromptTemplate.from_template(team_template)
     prompt = prompt.partial(format_instructions=parser.get_format_instructions())
@@ -441,43 +257,7 @@ async def generate_module_content(module_title, module_description, learning_obj
     """Generate extremely detailed content for a module"""
     print("Detailed Content Generation Module Started ...")
     model = get_model()
-    content_template = """
-    Create extremely detailed and comprehensive content for this module in a course about {course_topic}.
-    Your goal is to create the most thorough, in-depth educational content possible.
-    
-    Module Title: {module_title}
-    Module Description: {module_description}
-    Learning Objectives: {learning_objectives}
-    Difficulty Level: {difficulty_level}
-    Target Audience: {target_audience}
-    
-    IMPORTANT INSTRUCTIONS FOR DETAILED CONTENT:
-    
-    1. Introduction: Write a comprehensive 300+ word introduction that thoroughly explains the module's purpose, relevance, and what students will gain.
-    
-    2. Sections: Create 5-7 detailed sections. For EACH section:
-       - Write a clear, descriptive title
-       - Provide 400-600 words of detailed content with explanations, background information, and conceptual frameworks
-       - Include 2-4 subsections for each section, each with 200+ words of specific content
-       - Use examples, analogies, and explanations of underlying principles
-    
-    3. Key Concepts: Include 8-12 key concepts with detailed explanations (not just one-line definitions)
-    
-    4. Examples: For each of the 3-5 examples:
-       - Provide a realistic scenario or context
-       - Include a detailed 300+ word walkthrough with step-by-step explanations
-       - Add 3-5 key takeaways from each example
-    
-    5. Practice Activities: Include 3-5 detailed practice activities with clear instructions and expected outcomes
-    
-    6. Summary: Write a comprehensive 250+ word summary that ties everything together
-    
-    7. Further Reading: Suggest 3-5 resources for deeper learning with brief descriptions
-    
-    Your content should be extremely detailed, providing depth equivalent to a high-quality textbook chapter or professional learning material. DO NOT provide short or superficial content.
-    
-    {format_instructions}
-    """
+    content_template = CONTANT_PROMPT
     parser = JsonOutputParser(pydantic_object=ModuleContent)
     prompt = ChatPromptTemplate.from_template(content_template)
     prompt = prompt.partial(format_instructions=parser.get_format_instructions())
@@ -500,45 +280,7 @@ async def generate_module_content(module_title, module_description, learning_obj
 async def generate_assessments(module_title, module_description, learning_objectives, course_topic, difficulty_level, target_audience):
     """Generate comprehensive detailed assessments for a module"""
     model = get_model()
-    assessment_template = """
-    Create extremely comprehensive and detailed assessments for this module in a course about {course_topic}.
-    Your goal is to create assessment materials that thoroughly evaluate student understanding and provide detailed learning opportunities.
-    
-    Module Title: {module_title}
-    Module Description: {module_description}
-    Learning Objectives: {learning_objectives}
-    Difficulty Level: {difficulty_level}
-    Target Audience: {target_audience}
-    
-    IMPORTANT INSTRUCTIONS FOR DETAILED ASSESSMENTS:
-    
-    1. Quiz Questions: Create 8-12 detailed quiz questions. For EACH question:
-       - Write a detailed question (at least 50 words) that tests deeper understanding
-       - Provide background context explaining why this question matters (100+ words)
-       - Create detailed answer options that require careful consideration
-       - Include a comprehensive explanation of the correct answer (150+ words)
-    
-    2. Practice Problems: Create 4-6 comprehensive practice problems. For EACH problem:
-       - Write a detailed problem statement (200+ words)
-       - Provide real-world context that makes the problem relevant
-       - Include a step-by-step detailed solution with explanations (300+ words)
-       - Provide progressive hints to support different learning levels
-       - List key learning points students should take away
-    
-    3. Project Ideas: Create 3-5 detailed project proposals. For EACH project:
-       - Provide a comprehensive description (300+ words)
-       - List specific learning goals addressed
-       - Include detailed step-by-step implementation guidelines
-       - Specify required resources, evaluation criteria, and possible extensions
-    
-    4. Self-Assessment: Create thoughtful reflection questions with guidelines for self-evaluation
-    
-    5. Grading Rubrics: Provide detailed grading criteria for each major assessment
-    
-    Your assessments should be extremely detailed, challenging, and designed to promote deep learning. DO NOT provide superficial or simplistic assessment materials.
-    
-    {format_instructions}
-    """
+    assessment_template = ASSESSMENT_PROMPT
     parser = JsonOutputParser(pydantic_object=DetailedModuleAssessment)
     prompt = ChatPromptTemplate.from_template(assessment_template)
     prompt = prompt.partial(format_instructions=parser.get_format_instructions())
@@ -560,49 +302,7 @@ async def generate_assessments(module_title, module_description, learning_object
 async def generate_resources(module_title, module_description, learning_objectives, course_topic, difficulty_level, target_audience):
     """Generate extremely detailed resources for a module"""
     model = get_model()
-    resources_template = """
-    Create extremely comprehensive and detailed supplementary resources for this module in a course about {course_topic}.
-    Your goal is to provide the most thorough and valuable supplementary materials possible.
-    
-    Module Title: {module_title}
-    Module Description: {module_description}
-    Learning Objectives: {learning_objectives}
-    Difficulty Level: {difficulty_level}
-    Target Audience: {target_audience}
-    
-    IMPORTANT INSTRUCTIONS FOR DETAILED RESOURCES:
-    
-    1. Recommended Readings: Provide 5-8 detailed reading recommendations. For EACH reading:
-       - Include author, title, and comprehensive description (150+ words)
-       - Explain key topics covered and specific relevance to the module
-       - Include difficulty level, time commitment, and discussion questions
-    
-    2. Advanced Topics: Describe 4-6 advanced topics. For EACH topic:
-       - Provide a comprehensive description (250+ words)
-       - List prerequisites, learning pathway, and specific resources
-       - Explain real-world applications of this topic
-    
-    3. Tools and Resources: Detail 4-6 tools or resources. For EACH tool:
-       - Write a detailed description (200+ words)
-       - Include specific use cases relevant to the module
-       - Provide a detailed getting started guide and alternatives
-    
-    4. Glossary: Create 10-15 detailed glossary items. For EACH term:
-       - Write a comprehensive definition (50+ words)
-       - Explain usage context and importance (75+ words)
-       - Include examples and related terms
-    
-    5. Case Studies: Develop 2-4 detailed case studies. For EACH case:
-       - Present a detailed real-world scenario (300+ words)
-       - Provide in-depth analysis (400+ words)
-       - Include key lessons and discussion questions
-    
-    6. Cheat Sheets: Create quick reference materials for key concepts
-    
-    Your resources should be extremely detailed, comprehensive, and valuable for different learning styles and depth of exploration. DO NOT provide superficial or limited resources.
-    
-    {format_instructions}
-    """
+    resources_template = RESOURCE_PROMPT
     parser = JsonOutputParser(pydantic_object=DetailedModuleResources)
     prompt = ChatPromptTemplate.from_template(resources_template)
     prompt = prompt.partial(format_instructions=parser.get_format_instructions())
@@ -624,18 +324,7 @@ async def generate_resources(module_title, module_description, learning_objectiv
 async def generate_course_metadata(course_topic, difficulty_level, target_audience, learning_goals, team_outputs):
     """Generate course metadata"""
     model = get_model()
-    metadata_template = """
-    Create comprehensive course metadata for a course on {course_topic}.
-    
-    Difficulty level: {difficulty_level}
-    Target audience: {target_audience}
-    Learning goals: {learning_goals}
-    
-    Team outputs:
-    {team_outputs}
-    
-    {format_instructions}
-    """
+    metadata_template = METADATA_PROMPT
     parser = JsonOutputParser(pydantic_object=CourseMetadata)
     prompt = ChatPromptTemplate.from_template(metadata_template)
     prompt = prompt.partial(format_instructions=parser.get_format_instructions())
@@ -927,31 +616,4 @@ with tab2:
 with tab3:
     st.header("About Advanced Course Generator")
     
-    st.markdown("""
-    ### Overview
-    
-    The Advanced Course Generator is a powerful tool that uses AI to create comprehensive, expert-level courses on any topic.
-    
-    ### Features
-    
-    - **Web-Enhanced Content**: Optionally enrich course content with current best practices and resources from the web
-    - **Comprehensive Structure**: Creates complete course structure with modules, learning objectives, and content
-    - **Rich Content**: Generates detailed content including examples, assessments, and supplementary resources
-    - **Interactive Visualizations**: View course structure and content with intuitive visualizations
-    - **Easy Editing**: Modify and enhance the generated content to fit your needs
-    
-    ### How It Works
-    
-    1. Enter your course topic, difficulty level, target audience, and learning goals
-    2. Optionally enable web search to enhance content with current best practices
-    3. The system generates a complete course structure with detailed content
-    4. Review and edit the course as needed
-    5. Export or use the course in your preferred learning management system
-    
-    ### Technologies Used
-    
-    - **LangChain**: For orchestrating AI interactions
-    - **Streamlit**: For the user interface
-    - **Plotly**: For interactive visualizations
-    - **Web Search**: For enhancing content with current information
-    """)
+    st.markdown(MARKDOWN_PROMPT)
