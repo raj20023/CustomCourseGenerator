@@ -28,6 +28,103 @@ def load_course_data(job_id):
         st.error(f"Error loading course data: {str(e)}")
         return {}
 
+# Display functions that avoid nested expanders
+def display_section(section, index):
+    """Display a section with subsections"""
+    with st.expander(f"Section {index+1}: {section.get('title', 'Untitled Section')}"):
+        st.markdown(section.get("content", "No content available"))
+        
+        # Display subsections if available
+        subsections = section.get("subsections", [])
+        if subsections:
+            st.markdown("### Subsections")
+            for i, subsection in enumerate(subsections):
+                st.markdown(f"#### {index+1}.{i+1} {subsection.get('title', 'Untitled Subsection')}")
+                st.markdown(subsection.get("content", "No content available"))
+                st.markdown("---")
+
+def display_example(example, index):
+    """Display an example"""
+    with st.expander(f"Example {index+1}: {example.get('title', 'Untitled Example')}"):
+        # Display scenario if available
+        scenario = example.get("scenario")
+        if scenario:
+            st.markdown("**Scenario:**")
+            st.markdown(scenario)
+        
+        # Display content
+        st.markdown("**Example Details:**")
+        st.markdown(example.get("content", "No content available"))
+        
+        # Display key takeaways if available
+        takeaways = example.get("key_takeaways", [])
+        if takeaways:
+            st.markdown("**Key Takeaways:**")
+            for takeaway in takeaways:
+                st.markdown(f"- {takeaway}")
+
+def display_quiz_question(question, index):
+    """Display a quiz question"""
+    with st.expander(f"Question {index+1}: {question.get('question', '')[:80]}..."):
+        # Display context if available
+        context = question.get("context")
+        if context:
+            st.markdown("**Context:**")
+            st.markdown(context)
+        
+        # Display full question
+        st.markdown("**Question:**")
+        st.markdown(question.get("question", "No question available"))
+        
+        # Display options
+        options = question.get("options", [])
+        correct = question.get("correct_answer", "")
+        
+        st.markdown("**Options:**")
+        for option in options:
+            is_correct = option == correct
+            if is_correct:
+                st.markdown(f"✅ **{option}** (Correct)")
+            else:
+                st.markdown(f"◯ {option}")
+        
+        # Display explanation if available
+        explanation = question.get("explanation")
+        if explanation:
+            st.markdown("**Explanation:**")
+            st.markdown(explanation)
+
+def display_practice_problem(problem, index):
+    """Display a practice problem"""
+    with st.expander(f"Problem {index+1}: {problem.get('problem', '')[:80]}..."):
+        # Display context if available
+        context = problem.get("context")
+        if context:
+            st.markdown("**Context:**")
+            st.markdown(context)
+        
+        # Display problem
+        st.markdown("**Problem:**")
+        st.markdown(problem.get("problem", "No problem statement available"))
+        
+        # Display hints if available
+        hints = problem.get("hints", [])
+        if hints:
+            st.markdown("**Hints:**")
+            for i, hint in enumerate(hints):
+                st.markdown(f"**Hint {i+1}:** {hint}")
+        
+        # Display solution
+        st.markdown("**Solution:**")
+        st.markdown(problem.get("solution", "No solution available"))
+        
+        # Display learning points if available
+        learning_points = problem.get("learning_points", [])
+        if learning_points:
+            st.markdown("**Key Learning Points:**")
+            for point in learning_points:
+                st.markdown(f"- {point}")
+
 # Check if we have a current job ID
 if "current_job_id" not in st.session_state or not st.session_state.current_job_id:
     st.warning("No course selected. Please go back to the main page to select or create a course.")
@@ -79,11 +176,11 @@ else:
             else:
                 st.markdown("**Learning Outcomes**: None specified")
         
-        # Tabs for different views
-        tab1, tab2, tab3, tab4 = st.tabs(["Course Structure", "Module Content", "Assessments", "Analytics"])
+        # Main tabs
+        tabs = st.tabs(["Course Structure", "Module Content", "Assessments", "Resources", "Analytics"])
         
         # Course Structure Tab
-        with tab1:
+        with tabs[0]:
             st.header("Course Structure")
             
             # Get modules
@@ -109,113 +206,76 @@ else:
             # Visualization of course structure
             st.subheader("Course Structure Visualization")
             
-            # Create a network graph of the course structure
-            if modules:
-                # Create nodes for the graph
-                nodes = [{"id": "Course", "label": metadata.get("title", "Course"), "level": 0}]
-                edges = []
-                
-                # Add module nodes
-                for i, module in enumerate(modules):
-                    module_id = f"Module {i+1}"
-                    nodes.append({
-                        "id": module_id,
-                        "label": module.get("title", f"Module {i+1}"),
-                        "level": 1
-                    })
-                    edges.append({"from": "Course", "to": module_id})
-                    
-                    # Add components for each module
-                    components = ["Content", "Assessments", "Resources"]
-                    for comp in components:
-                        comp_id = f"{module_id} - {comp}"
-                        nodes.append({
-                            "id": comp_id,
-                            "label": comp,
-                            "level": 2
-                        })
-                        edges.append({"from": module_id, "to": comp_id})
-                
-                # Create a Plotly figure for the network
+            # Create course structure flowchart
+            modules_count = len(modules)
+            module_names = [module.get("title", f"Module {i+1}") for i, module in enumerate(modules)]
+            
+            if modules_count > 0:
+                # Create a simple Plotly figure showing course flow
                 fig = go.Figure()
                 
-                # Create edge traces
-                for edge in edges:
-                    # Find node positions
-                    source_node = next(node for node in nodes if node["id"] == edge["from"])
-                    target_node = next(node for node in nodes if node["id"] == edge["to"])
-                    
-                    # Level-based positioning
-                    source_level = source_node["level"]
-                    target_level = target_node["level"]
-                    
-                    # Find nodes at same level to determine x position
-                    same_level_sources = [n for n in nodes if n["level"] == source_level]
-                    same_level_targets = [n for n in nodes if n["level"] == target_level]
-                    
-                    source_index = same_level_sources.index(source_node)
-                    target_index = same_level_targets.index(target_node)
-                    
-                    source_x = source_index - len(same_level_sources) / 2
-                    target_x = target_index - len(same_level_targets) / 2
-                    
-                    # Add edge
+                # Add course node
+                fig.add_trace(go.Scatter(
+                    x=[0], 
+                    y=[0],
+                    mode='markers+text',
+                    marker=dict(size=30, color='#5c67de'),
+                    text=['Course'],
+                    textposition='middle center',
+                    textfont=dict(color='white'),
+                    name='Course'
+                ))
+                
+                # Add module nodes
+                x_positions = [0 if modules_count == 1 else (i - (modules_count-1)/2) for i in range(modules_count)]
+                y_positions = [-1] * modules_count
+                
+                fig.add_trace(go.Scatter(
+                    x=x_positions, 
+                    y=y_positions,
+                    mode='markers+text',
+                    marker=dict(size=25, color='#34d399'),
+                    text=module_names,
+                    textposition='middle center',
+                    textfont=dict(color='white', size=10),
+                    name='Modules'
+                ))
+                
+                # Add lines connecting course to modules
+                for i in range(modules_count):
                     fig.add_trace(go.Scatter(
-                        x=[source_x, target_x],
-                        y=[source_level * -1, target_level * -1],
+                        x=[0, x_positions[i]],
+                        y=[0, -1],
                         mode='lines',
                         line=dict(width=1, color='rgba(100, 100, 100, 0.5)'),
-                        hoverinfo='none',
-                        showlegend=False
-                    ))
-                
-                # Create node traces for each level
-                for level in range(3):
-                    level_nodes = [node for node in nodes if node["level"] == level]
-                    
-                    if not level_nodes:
-                        continue
-                    
-                    # Get x positions
-                    x_pos = [i - len(level_nodes) / 2 for i in range(len(level_nodes))]
-                    
-                    # Color based on level
-                    colors = ['#5c67de', '#34d399', '#f97316']
-                    
-                    # Add nodes
-                    fig.add_trace(go.Scatter(
-                        x=x_pos,
-                        y=[level * -1] * len(level_nodes),
-                        mode='markers+text',
-                        marker=dict(
-                            size=30,
-                            color=colors[level],
-                            line=dict(width=1, color='white')
-                        ),
-                        text=[node["label"] for node in level_nodes],
-                        textposition='middle center',
-                        textfont=dict(size=10, color='white'),
-                        hoverinfo='text',
-                        hovertext=[node["label"] for node in level_nodes],
                         showlegend=False
                     ))
                 
                 # Update layout
                 fig.update_layout(
                     showlegend=False,
-                    hovermode='closest',
-                    margin=dict(b=20, l=5, r=5, t=40),
-                    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                    title="Course Structure",
                     plot_bgcolor='rgba(0,0,0,0)',
-                    height=500,
-                    title="Course Structure Network"
+                    xaxis=dict(
+                        showgrid=False,
+                        zeroline=False,
+                        showticklabels=False,
+                        range=[-modules_count/2-0.5, modules_count/2+0.5]
+                    ),
+                    yaxis=dict(
+                        showgrid=False,
+                        zeroline=False,
+                        showticklabels=False,
+                        range=[-1.5, 0.5]
+                    ),
+                    height=300,
+                    margin=dict(l=20, r=20, t=50, b=20),
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
         
         # Module Content Tab
-        with tab2:
+        with tabs[1]:
             st.header("Module Content")
             
             # Get first module content
@@ -249,35 +309,45 @@ else:
                 if sections:
                     st.subheader("Sections")
                     for i, section in enumerate(sections):
-                        with st.expander(f"{i+1}. {section.get('title', 'Untitled Section')}"):
-                            st.markdown(section.get("content", "No content available"))
+                        display_section(section, i)
                 
                 # Key Concepts
                 key_concepts = selected_content.get("key_concepts", [])
                 if key_concepts:
                     st.subheader("Key Concepts")
-                    for concept in key_concepts:
-                        st.markdown(f"- {concept}")
+                    with st.expander("View All Key Concepts"):
+                        for concept in key_concepts:
+                            st.markdown(f"- {concept}")
                 
                 # Examples
                 examples = selected_content.get("examples", [])
                 if examples:
                     st.subheader("Examples")
                     for i, example in enumerate(examples):
-                        with st.expander(f"Example {i+1}: {example.get('title', 'Untitled Example')}"):
-                            st.markdown(example.get("content", "No content available"))
+                        display_example(example, i)
+                
+                # Practice Activities
+                activities = selected_content.get("practice_activities", [])
+                if activities:
+                    st.subheader("Practice Activities")
+                    for i, activity in enumerate(activities):
+                        with st.expander(f"Activity {i+1}: {activity.get('title', 'Untitled Activity')}"):
+                            st.markdown(activity.get("instructions", "No instructions available"))
                 
                 # Summary
                 st.subheader("Summary")
                 st.markdown(selected_content.get("summary", "No summary available"))
                 
-                # Edit button
-                if st.button("Edit Module Content"):
-                    st.session_state.editing_module = selected_module
-                    st.switch_page("pages/edit_module.py")
+                # Further Reading
+                further_reading = selected_content.get("further_reading", [])
+                if further_reading:
+                    st.subheader("Further Reading")
+                    with st.expander("View Recommended Reading"):
+                        for reading in further_reading:
+                            st.markdown(f"**{reading.get('title', 'Untitled')}**: {reading.get('description', '')}")
         
         # Assessments Tab
-        with tab3:
+        with tabs[2]:
             st.header("Assessments")
             
             # Get assessment content
@@ -289,85 +359,248 @@ else:
                 # Get first assessment
                 first_assessment = next(iter(assessment_content.values()), {})
                 
-                # Quiz questions
-                quiz_questions = first_assessment.get("quiz_questions", [])
-                if quiz_questions:
-                    st.subheader("Quiz Questions")
-                    for i, question in enumerate(quiz_questions):
-                        with st.expander(f"Question {i+1}: {question.get('question', 'Untitled Question')}"):
-                            options = question.get("options", [])
-                            correct = question.get("correct_answer", "")
-                            
-                            for option in options:
-                                is_correct = option == correct
-                                if is_correct:
-                                    st.markdown(f"✅ **{option}** (Correct)")
-                                else:
-                                    st.markdown(f"◯ {option}")
+                assessment_subtabs = st.tabs(["Quiz Questions", "Practice Problems", "Projects", "Self-Assessment"])
                 
-                # Practice problems
-                practice_problems = first_assessment.get("practice_problems", [])
-                if practice_problems:
-                    st.subheader("Practice Problems")
-                    for i, problem in enumerate(practice_problems):
-                        with st.expander(f"Problem {i+1}: {problem.get('problem', 'Untitled Problem')[:50]}..."):
-                            st.markdown("**Problem:**")
-                            st.markdown(problem.get("problem", "No problem statement available"))
-                            st.markdown("**Solution:**")
-                            st.markdown(problem.get("solution", "No solution available"))
+                # Quiz questions tab
+                with assessment_subtabs[0]:
+                    quiz_questions = first_assessment.get("quiz_questions", [])
+                    if quiz_questions:
+                        st.subheader("Quiz Questions")
+                        for i, question in enumerate(quiz_questions):
+                            display_quiz_question(question, i)
+                    else:
+                        st.info("No quiz questions available.")
                 
-                # Project ideas
-                project_ideas = first_assessment.get("project_ideas", [])
-                if project_ideas:
-                    st.subheader("Project Ideas")
-                    for i, project in enumerate(project_ideas):
-                        with st.expander(f"Project {i+1}: {project.get('title', 'Untitled Project')}"):
-                            st.markdown(project.get("description", "No description available"))
+                # Practice problems tab
+                with assessment_subtabs[1]:
+                    practice_problems = first_assessment.get("practice_problems", [])
+                    if practice_problems:
+                        st.subheader("Practice Problems")
+                        for i, problem in enumerate(practice_problems):
+                            display_practice_problem(problem, i)
+                    else:
+                        st.info("No practice problems available.")
                 
-                # Self assessment
-                self_assessment = first_assessment.get("self_assessment", [])
-                if self_assessment:
-                    st.subheader("Self Assessment Questions")
-                    for i, question in enumerate(self_assessment):
-                        st.markdown(f"{i+1}. {question}")
+                # Projects tab
+                with assessment_subtabs[2]:
+                    project_ideas = first_assessment.get("project_ideas", [])
+                    if project_ideas:
+                        st.subheader("Project Ideas")
+                        for i, project in enumerate(project_ideas):
+                            with st.expander(f"Project {i+1}: {project.get('title', 'Untitled Project')}"):
+                                st.markdown(project.get("description", "No description available"))
+                                
+                                # Display additional project details if available
+                                for field in ["learning_goals", "steps", "resources_needed", "evaluation_criteria"]:
+                                    items = project.get(field, [])
+                                    if items:
+                                        st.markdown(f"**{field.replace('_', ' ').title()}:**")
+                                        for item in items:
+                                            # Handle both string items and dict items
+                                            if isinstance(item, dict):
+                                                st.markdown(f"- **{item.get('title', '')}**: {item.get('description', '')}")
+                                            else:
+                                                st.markdown(f"- {item}")
+                    else:
+                        st.info("No project ideas available.")
                 
-                # Resources
-                st.subheader("Supplementary Resources")
-                resources_content = course_data.get("resources_content", {})
+                # Self-assessment tab
+                with assessment_subtabs[3]:
+                    self_assessment = first_assessment.get("self_assessment", [])
+                    if self_assessment:
+                        st.subheader("Self-Assessment Questions")
+                        
+                        # Handle different formats of self-assessment
+                        if isinstance(self_assessment[0], dict):
+                            for i, item in enumerate(self_assessment):
+                                with st.expander(f"Question {i+1}: {item.get('question', 'Untitled')}"):
+                                    st.markdown(item.get("guidelines", ""))
+                        else:
+                            for i, question in enumerate(self_assessment):
+                                st.markdown(f"{i+1}. {question}")
+                    else:
+                        st.info("No self-assessment questions available.")
+        
+        # Resources Tab
+        with tabs[3]:
+            st.header("Resources")
+            
+            resources_content = course_data.get("resources_content", {})
+            if not resources_content:
+                st.info("No resources available.")
+            else:
+                first_resource = next(iter(resources_content.values()), {})
                 
-                if resources_content:
-                    first_resource = next(iter(resources_content.values()), {})
-                    
-                    # Recommended readings
+                resource_subtabs = st.tabs(["Readings", "Advanced Topics", "Tools", "Glossary", "Case Studies"])
+                
+                # Readings tab
+                with resource_subtabs[0]:
                     readings = first_resource.get("recommended_readings", [])
                     if readings:
-                        with st.expander("Recommended Readings"):
-                            for reading in readings:
-                                st.markdown(f"**{reading.get('title', 'Untitled')}**: {reading.get('description', '')}")
-                    
-                    # Advanced topics
+                        st.subheader("Recommended Readings")
+                        for i, reading in enumerate(readings):
+                            with st.expander(f"Reading {i+1}: {reading.get('title', 'Untitled')}"):
+                                if reading.get("author"):
+                                    st.markdown(f"**Author:** {reading.get('author')}")
+                                
+                                st.markdown(reading.get("description", "No description available"))
+                                
+                                # Display additional reading details if available
+                                for field, label in [
+                                    ("key_topics", "Key Topics"), 
+                                    ("relevance", "Relevance"), 
+                                    ("difficulty", "Difficulty")
+                                ]:
+                                    value = reading.get(field)
+                                    if value:
+                                        if isinstance(value, list):
+                                            st.markdown(f"**{label}:**")
+                                            for item in value:
+                                                st.markdown(f"- {item}")
+                                        else:
+                                            st.markdown(f"**{label}:** {value}")
+                    else:
+                        st.info("No reading recommendations available.")
+                
+                # Advanced topics tab
+                with resource_subtabs[1]:
                     advanced = first_resource.get("advanced_topics", [])
                     if advanced:
-                        with st.expander("Advanced Topics"):
-                            for topic in advanced:
-                                st.markdown(f"**{topic.get('title', 'Untitled')}**: {topic.get('description', '')}")
-                    
-                    # Tools and resources
+                        st.subheader("Advanced Topics")
+                        for i, topic in enumerate(advanced):
+                            with st.expander(f"Topic {i+1}: {topic.get('title', 'Untitled')}"):
+                                st.markdown(topic.get("description", "No description available"))
+                                
+                                # Display additional topic details
+                                for field, label in [
+                                    ("prerequisites", "Prerequisites"), 
+                                    ("learning_pathway", "Learning Pathway"), 
+                                    ("applications", "Applications")
+                                ]:
+                                    value = topic.get(field)
+                                    if value:
+                                        if isinstance(value, list):
+                                            st.markdown(f"**{label}:**")
+                                            for item in value:
+                                                st.markdown(f"- {item}")
+                                        else:
+                                            st.markdown(f"**{label}:** {value}")
+                    else:
+                        st.info("No advanced topics available.")
+                
+                # Tools tab
+                with resource_subtabs[2]:
                     tools = first_resource.get("tools_and_resources", [])
                     if tools:
-                        with st.expander("Tools & Resources"):
-                            for tool in tools:
-                                st.markdown(f"**{tool.get('name', 'Untitled')}**: {tool.get('description', '')}")
-                    
-                    # Glossary
+                        st.subheader("Tools & Resources")
+                        for i, tool in enumerate(tools):
+                            with st.expander(f"Tool {i+1}: {tool.get('name', 'Untitled')}"):
+                                if tool.get("type"):
+                                    st.markdown(f"**Type:** {tool.get('type')}")
+                                
+                                st.markdown(tool.get("description", "No description available"))
+                                
+                                # Display use cases if available
+                                use_cases = tool.get("use_cases", [])
+                                if use_cases:
+                                    st.markdown("**Use Cases:**")
+                                    for case in use_cases:
+                                        st.markdown(f"- {case}")
+                                
+                                # Display getting started guide if available
+                                getting_started = tool.get("getting_started")
+                                if getting_started:
+                                    st.markdown("**Getting Started:**")
+                                    st.markdown(getting_started)
+                    else:
+                        st.info("No tools and resources available.")
+                
+                # Glossary tab
+                with resource_subtabs[3]:
                     glossary = first_resource.get("glossary", [])
                     if glossary:
-                        with st.expander("Glossary"):
-                            for term in glossary:
-                                st.markdown(f"**{term.get('term', 'Untitled')}**: {term.get('definition', '')}")
+                        st.subheader("Glossary")
+                        
+                        # Search filter
+                        search = st.text_input("Search glossary terms")
+                        
+                        # Filter items based on search
+                        filtered_items = glossary
+                        if search:
+                            filtered_items = [item for item in glossary 
+                                             if search.lower() in item.get("term", "").lower()]
+                        
+                        # Group items by first letter
+                        grouped_items = {}
+                        for item in filtered_items:
+                            term = item.get("term", "")
+                            if not term:
+                                continue
+                            first_letter = term[0].upper()
+                            if first_letter not in grouped_items:
+                                grouped_items[first_letter] = []
+                            grouped_items[first_letter].append(item)
+                        
+                        # Display grouped items
+                        if grouped_items:
+                            letters = sorted(grouped_items.keys())
+                            letter_tabs = st.tabs(letters)
+                            
+                            for i, letter in enumerate(letters):
+                                with letter_tabs[i]:
+                                    for item in grouped_items[letter]:
+                                        st.markdown(f"**{item.get('term', 'Untitled')}**")
+                                        st.markdown(item.get("definition", "No definition available"))
+                                        
+                                        # Display context if available
+                                        context = item.get("context")
+                                        if context:
+                                            st.markdown("**Context:**")
+                                            st.markdown(context)
+                                        
+                                        # Display examples if available
+                                        examples = item.get("examples", [])
+                                        if examples:
+                                            st.markdown("**Examples:**")
+                                            for example in examples:
+                                                st.markdown(f"- {example}")
+                                        
+                                        st.markdown("---")
+                        else:
+                            st.info("No matching glossary terms found.")
+                    else:
+                        st.info("No glossary available.")
+                
+                # Case studies tab
+                with resource_subtabs[4]:
+                    cases = first_resource.get("case_studies", [])
+                    if cases:
+                        st.subheader("Case Studies")
+                        for i, case in enumerate(cases):
+                            with st.expander(f"Case Study {i+1}: {case.get('title', 'Untitled')}"):
+                                # Display scenario
+                                st.markdown("**Scenario:**")
+                                st.markdown(case.get("scenario", "No scenario available"))
+                                
+                                # Display analysis
+                                st.markdown("**Analysis:**")
+                                st.markdown(case.get("analysis", "No analysis available"))
+                                
+                                # Display lessons and questions if available
+                                for field, label in [("lessons", "Key Lessons"), ("questions", "Discussion Questions")]:
+                                    items = case.get(field, [])
+                                    if items:
+                                        st.markdown(f"**{label}:**")
+                                        for j, item in enumerate(items):
+                                            if field == "questions":
+                                                st.markdown(f"{j+1}. {item}")
+                                            else:
+                                                st.markdown(f"- {item}")
+                    else:
+                        st.info("No case studies available.")
         
         # Analytics Tab
-        with tab4:
+        with tabs[4]:
             st.header("Course Analytics")
             
             # Count content items
@@ -454,93 +687,6 @@ else:
                 with cols[2]:
                     st.metric("Tools & Resources", tools_count)
             
-            # Learning curve visualization
-            st.subheader("Learning Curve Visualization")
-            
-            # Create a learning curve showing the progression of complexity
-            modules = metadata.get("modules", [])
-            if modules:
-                module_names = [m.get("title", f"Module {i+1}") for i, m in enumerate(modules)]
-                complexity_values = [0.3, 0.5, 0.7, 0.9][:len(modules)]
-                
-                learning_data = pd.DataFrame({
-                    'Module': module_names,
-                    'Complexity': complexity_values,
-                    'Knowledge': [0.2, 0.4, 0.7, 0.9][:len(modules)]
-                })
-                
-                fig3 = go.Figure()
-                
-                # Add complexity curve
-                fig3.add_trace(go.Scatter(
-                    x=learning_data['Module'],
-                    y=learning_data['Complexity'],
-                    mode='lines+markers',
-                    name='Content Complexity',
-                    line=dict(color='#5c67de', width=3),
-                    marker=dict(size=10)
-                ))
-                
-                # Add knowledge curve
-                fig3.add_trace(go.Scatter(
-                    x=learning_data['Module'],
-                    y=learning_data['Knowledge'],
-                    mode='lines+markers',
-                    name='Expected Knowledge',
-                    line=dict(color='#34d399', width=3),
-                    marker=dict(size=10)
-                ))
-                
-                # Update layout
-                fig3.update_layout(
-                    title='Learning Progression Curve',
-                    xaxis_title='Course Modules',
-                    yaxis_title='Level (0-1)',
-                    yaxis=dict(range=[0, 1]),
-                    legend=dict(
-                        orientation="h",
-                        yanchor="bottom",
-                        y=1.02,
-                        xanchor="right",
-                        x=1
-                    )
-                )
-                
-                st.plotly_chart(fig3, use_container_width=True)
-                
-                # Learning outcomes vs assessments
-                st.subheader("Learning Outcomes vs Assessments")
-                
-                # Get learning outcomes
-                outcomes = metadata.get("learning_outcomes", [])
-                if outcomes:
-                    outcome_data = []
-                    for i, outcome in enumerate(outcomes):
-                        # Calculate match percentage (in a real app, this would be more sophisticated)
-                        match_percentage = min(100, (quiz_count + problem_count) * 20)
-                        outcome_data.append({
-                            'Outcome': f"Outcome {i+1}",
-                            'Description': outcome,
-                            'Match': match_percentage
-                        })
-                    
-                    outcome_df = pd.DataFrame(outcome_data)
-                    
-                    fig4 = px.bar(
-                        outcome_df,
-                        x='Outcome',
-                        y='Match',
-                        color='Match',
-                        labels={'Match': 'Assessment Coverage (%)'},
-                        title='Learning Outcomes Assessment Coverage',
-                        color_continuous_scale='Viridis',
-                        hover_data=['Description']
-                    )
-                    
-                    fig4.update_layout(yaxis_range=[0, 100])
-                    
-                    st.plotly_chart(fig4, use_container_width=True)
-        
         # Action buttons at the bottom
         st.write("---")
         col1, col2, col3 = st.columns(3)
@@ -555,17 +701,16 @@ else:
                 st.switch_page("pages/edit_metadata.py")
         
         with col3:
-            if st.button("Export Course"):
-                # Create JSON for download
-                json_str = json.dumps(course_data, indent=2)
-                
-                # Prepare filename
-                filename = f"{metadata.get('title', 'course').replace(' ', '_').lower()}.json"
-                
-                # Create download button
-                st.download_button(
-                    label="Download JSON",
-                    data=json_str,
-                    file_name=filename,
-                    mime="application/json"
-                )
+            # Create JSON for download
+            json_str = json.dumps(course_data, indent=2)
+            
+            # Prepare filename
+            filename = f"{metadata.get('title', 'course').replace(' ', '_').lower()}.json"
+            
+            # Create download button
+            st.download_button(
+                label="Export Course",
+                data=json_str,
+                file_name=filename,
+                mime="application/json"
+            )
