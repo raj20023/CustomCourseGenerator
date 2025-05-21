@@ -16,11 +16,11 @@ This Streamlit application allows you to generate comprehensive, expert-level co
 2. Install the required dependencies:
 
 ```bash
-pip install streamlit langchain langchain_ollama langchain_core plotly pandas httpx
+pip install streamlit langchain langchain_openai langchain_core plotly pandas httpx
 ```
 
-3. Make sure you have Ollama installed locally and running with the llama3.1:8b model (or modify the code to use another model)
-4. If you want to use web search enhancement, get a Serper API key and update it in the app.py file
+3. Add OPENAI_API_KEY in the .env file
+4. If you want to use web search enhancement, get a Tavily API key and update it in the app.py file
 
 ## Project Structure
 
